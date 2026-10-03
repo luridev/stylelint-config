@@ -1,0 +1,78 @@
+{
+  "name": "@protoapps/stylelint-config",
+  "version": "0.1.0",
+  "description": "Shared Stylelint policy for Protoapps CSS and Vue projects",
+  "license": "MIT",
+  "repository": "github:luridev/stylelint-config",
+  "homepage": "https://github.com/luridev/stylelint-config#readme",
+  "bugs": "https://github.com/luridev/stylelint-config/issues",
+  "author": "Anton V.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "clean": "node config/clean.js",
+    "lint": "eslint .",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm --dry-run=false run validate",
+    "release": "bumpp",
+    "test": "npm run build && node --test test/*.test.ts",
+    "test:package": "node config/package/verifyPackage.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "validate": "npm test && npm run lint && npm run typecheck && npm run test:package"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "stylelint",
+    "stylelint-config",
+    "css",
+    "vue",
+    "bem"
+  ],
+  "dependencies": {
+    "@morev/stylelint-plugin": "^0.7.0",
+    "postcss": "^8.5.28",
+    "postcss-html": "^2.0.0",
+    "stylelint-config-html": "^2.0.0",
+    "stylelint-config-recommended": "^18.0.0",
+    "stylelint-config-recommended-vue": "^2.0.0",
+    "stylelint-config-standard": "^40.0.0",
+    "stylelint-config-standard-vue": "^2.0.0",
+    "stylelint-declaration-block-no-ignored-properties": "^3.0.0",
+    "stylelint-plugin-use-baseline": "^1.4.6"
+  },
+  "devDependencies": {
+    "@protoapps/eslint-config": "^0.3.2",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^22.19.0",
+    "bumpp": "^12.3.0",
+    "cross-spawn": "^7.0.6",
+    "eslint": "^10.11.0",
+    "jiti": "^2.7.0",
+    "lefthook": "^2.1.14",
+    "publint": "^0.3.24",
+    "stylelint": "^17.15.0",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "stylelint": "^17.15.0"
+  },
+  "allowScripts": {
+    "lefthook@2.1.14": true,
+    "unrs-resolver": false
+  }
+}
