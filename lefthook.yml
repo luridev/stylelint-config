@@ -1,4 +1,4 @@
 pre-commit:
   jobs:
-    - name: validate
-      run: npm run validate
+    - name: check:commit
+      run: npm run check:commit
