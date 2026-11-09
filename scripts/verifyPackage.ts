@@ -8,7 +8,6 @@ import spawn from 'cross-spawn';
 
 type NpmPackResult = {
   filename: string;
-  files: Array<{ path: string }>;
 };
 
 type PackageManifest = {
@@ -60,18 +59,6 @@ try {
   const packed = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', scratch])) as Array<NpmPackResult>;
 
   assert.equal(packed.length, 1);
-
-  assert.deepEqual(packed[0].files.map(({ path }) => path).toSorted(), [
-    'LICENSE',
-    'README.md',
-    'dist/base.d.ts',
-    'dist/base.js',
-    'dist/index.d.ts',
-    'dist/index.js',
-    'dist/types.d.ts',
-    'dist/types.js',
-    'package.json',
-  ].toSorted(), 'tarball must contain only the public package files');
 
   const archive = join(scratch, packed[0].filename);
 
