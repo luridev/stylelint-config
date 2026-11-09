@@ -9,7 +9,10 @@
     "erasableSyntaxOnly": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@protoapps/stylelint-config": ["./src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts", "test/*.ts", "scripts/**/*.ts", "*.config.ts"]
 }

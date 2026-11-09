@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import stylelint from 'stylelint';
 import { describe, it } from 'vitest';
-import { createProtoConfig } from '../dist/index.js';
+import { createProtoConfig } from '@protoapps/stylelint-config';
 import type { Config, Rule } from 'stylelint';
 
 const bemRule = '@morev/bem/selector-pattern';
