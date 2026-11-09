@@ -23,15 +23,16 @@
   },
   "scripts": {
     "build": "npm run clean && tsc -p tsconfig.build.json",
-    "check:commit": "npm test && npm run lint && npm run typecheck && npm run test:package",
-    "clean": "node config/clean.js",
+    "check:commit": "npm test && npm run lint && npm run typecheck",
+    "clean": "rimraf dist",
     "lint": "eslint .",
     "prepack": "npm run build",
     "prepublishOnly": "npm --dry-run=false run check:commit",
-    "prerelease": "node --input-type=module -e \"import { checkGitStatus } from 'bumpp/cli'; await checkGitStatus()\"",
+    "prerelease": "jiti scripts/checkRelease.ts",
     "release": "npm run check:commit && bumpp",
-    "test": "npm run build && node --test test/*.test.ts",
-    "test:package": "node config/package/verifyPackage.ts",
+    "test": "npm run test:unit && npm run test:package",
+    "test:package": "npm run build && jiti scripts/verifyPackage.ts",
+    "test:unit": "npm run build && vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
   "files": [
@@ -60,17 +61,20 @@
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@commitlint/types": "^21.2.3",
-    "@protoapps/eslint-config": "^0.3.3",
+    "@protoapps/eslint-config": "^0.3.4",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^22.19.0",
+    "@vitest/eslint-plugin": "^1.6.28",
     "bumpp": "^12.3.0",
     "cross-spawn": "^7.0.6",
     "eslint": "^10.11.0",
     "jiti": "^2.7.0",
     "lefthook": "^2.1.14",
     "publint": "^0.3.24",
+    "rimraf": "^6.1.4",
     "stylelint": "^17.15.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
   },
   "peerDependencies": {
     "stylelint": "^17.15.0"

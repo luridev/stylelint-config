@@ -1,7 +1,10 @@
 import { createProtoConfig } from '@protoapps/eslint-config';
 
 export default createProtoConfig(
-  { tsconfigRootDir: import.meta.dirname },
+  {
+    tsconfigRootDir: import.meta.dirname,
+    vitest: { files: ['test/*.test.ts'] },
+  },
   { ignores: ['dist/**', 'test/fixtures/**'] },
   {
     files: ['test/contract.test.ts', 'test/types.ts'],

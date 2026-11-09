@@ -6,7 +6,25 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import spawn from 'cross-spawn';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
+type NpmPackResult = {
+  filename: string;
+  files: Array<{ path: string }>;
+};
+
+type PackageManifest = {
+  version: string;
+  exports: Record<string, { types: string; default: string }>;
+  dependencies: Record<string, string>;
+  peerDependencies: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+};
+
+type PackageLock = {
+  packages: Record<string, unknown>;
+};
+
+const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(import.meta.url);
 const scratch = mkdtempSync(join(tmpdir(), 'protoapps-stylelint-'));
 const consumer = join(scratch, 'consumer');
@@ -24,7 +42,7 @@ function run(command: string, args: Array<string>, cwd = root) {
 }
 
 function version(name: string): string {
-  const manifest = JSON.parse(readFileSync(require.resolve(`${name}/package.json`), 'utf8')) as { version: string };
+  const manifest = JSON.parse(readFileSync(require.resolve(`${name}/package.json`), 'utf8')) as Pick<PackageManifest, 'version'>;
 
   return manifest.version;
 }
@@ -38,8 +56,23 @@ function write(name: string, content: string) {
 
 try {
   assert.ok(relative(root, scratch).startsWith('..'), 'consumer must be outside the workspace');
-  run('npm', ['run', 'build']);
-  const packed = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', scratch])) as Array<{ filename: string }>;
+
+  const packed = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', scratch])) as Array<NpmPackResult>;
+
+  assert.equal(packed.length, 1);
+
+  assert.deepEqual(packed[0].files.map(({ path }) => path).toSorted(), [
+    'LICENSE',
+    'README.md',
+    'dist/base.d.ts',
+    'dist/base.js',
+    'dist/index.d.ts',
+    'dist/index.js',
+    'dist/types.d.ts',
+    'dist/types.js',
+    'package.json',
+  ].toSorted(), 'tarball must contain only the public package files');
+
   const archive = join(scratch, packed[0].filename);
 
   run('npm', ['exec', '--no', '--', 'publint', archive, '--strict']);
@@ -49,6 +82,20 @@ try {
   const installed = realpathSync(join(consumer, 'node_modules/@protoapps/stylelint-config'));
 
   assert.ok(installed.startsWith(realpathSync(consumer)), 'must import a real tarball installation');
+  const manifest = JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8')) as PackageManifest;
+  const localManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageManifest;
+
+  assert.deepEqual(manifest.exports, { '.': { types: './dist/index.d.ts', default: './dist/index.js' } });
+  assert.deepEqual(manifest.dependencies, localManifest.dependencies);
+  assert.deepEqual(manifest.peerDependencies, { stylelint: localManifest.peerDependencies.stylelint });
+  assert.deepEqual(manifest.optionalDependencies ?? {}, {});
+  assert.deepEqual(manifest.peerDependenciesMeta ?? {}, {});
+  const lock = JSON.parse(readFileSync(join(consumer, 'package-lock.json'), 'utf8')) as PackageLock;
+
+  for (const name of ['@protoapps/eslint-config', 'eslint', '@vitest/eslint-plugin', 'vitest', 'jiti', 'typescript']) {
+    assert.ok(!Object.keys(lock.packages).some((path) => path.endsWith(`node_modules/${name}`)),
+      `Unexpected runtime dependency: ${name}`);
+  }
 
   write('stylelint.config.mjs', `import { createProtoConfig } from '@protoapps/stylelint-config';
 export default createProtoConfig({
