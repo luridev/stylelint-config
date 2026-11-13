@@ -6,10 +6,6 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import spawn from 'cross-spawn';
 
-type NpmPackResult = {
-  filename: string;
-};
-
 type PackageManifest = {
   version: string;
   exports: Record<string, { types: string; default: string }>;
@@ -56,11 +52,20 @@ function write(name: string, content: string) {
 try {
   assert.ok(relative(root, scratch).startsWith('..'), 'consumer must be outside the workspace');
 
-  const packed = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', scratch])) as Array<NpmPackResult>;
+  const packData: unknown = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', scratch]));
 
-  assert.equal(packed.length, 1);
+  assert.ok(typeof packData === 'object' && packData !== null, 'npm pack must return an array or object.');
 
-  const archive = join(scratch, packed[0].filename);
+  const packed: Array<unknown> = Array.isArray(packData) ? packData : Object.values(packData);
+
+  assert.equal(packed.length, 1, 'npm pack must produce one archive.');
+
+  const [tarball] = packed;
+
+  assert.ok(typeof tarball === 'object' && tarball !== null, 'npm pack must return package metadata.');
+  assert.ok('filename' in tarball && typeof tarball.filename === 'string', 'npm pack must return a filename.');
+
+  const archive = join(scratch, tarball.filename);
 
   run('npm', ['exec', '--no', '--', 'publint', archive, '--strict']);
   write('package.json', JSON.stringify({ name: 'packed-stylelint-consumer', private: true, type: 'module' }));
