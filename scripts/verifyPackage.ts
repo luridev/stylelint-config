@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import spawn from 'cross-spawn';
+import { createRunner, lintPackage, packPackage, withTemporaryDirectory } from '@protoapps/package-verifier';
 
 type PackageManifest = {
   version: string;
@@ -21,20 +20,7 @@ type PackageLock = {
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(import.meta.url);
-const scratch = mkdtempSync(join(tmpdir(), 'protoapps-stylelint-'));
-const consumer = join(scratch, 'consumer');
-const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !['NODE_PATH', 'NODE_OPTIONS'].includes(key.toUpperCase())));
-
-function run(command: string, args: Array<string>, cwd = root) {
-  const result = spawn.sync(command, args, { cwd, env, encoding: 'utf8', windowsHide: true });
-
-  assert.ifError(result.error);
-  assert.equal(result.status, 0, `${command} ${args.join(' ')}\n${result.stdout}\n${result.stderr}`);
-  process.stdout.write(result.stdout);
-  process.stderr.write(result.stderr);
-
-  return result.stdout;
-}
+const runner = createRunner({ cwd: root, output: 'inherit', timeout: 600_000 });
 
 function version(name: string): string {
   const manifest = JSON.parse(readFileSync(require.resolve(`${name}/package.json`), 'utf8')) as Pick<PackageManifest, 'version'>;
@@ -42,35 +28,23 @@ function version(name: string): string {
   return manifest.version;
 }
 
-function write(name: string, content: string) {
-  const target = join(consumer, name);
+await withTemporaryDirectory(async (scratch) => {
+  const consumer = join(scratch, 'consumer');
 
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, content);
-}
+  function write(name: string, content: string) {
+    const target = join(consumer, name);
 
-try {
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  }
+
   assert.ok(relative(root, scratch).startsWith('..'), 'consumer must be outside the workspace');
 
-  const packData: unknown = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', scratch]));
-
-  assert.ok(typeof packData === 'object' && packData !== null, 'npm pack must return an array or object.');
-
-  const packed: Array<unknown> = Array.isArray(packData) ? packData : Object.values(packData);
-
-  assert.equal(packed.length, 1, 'npm pack must produce one archive.');
-
-  const [tarball] = packed;
-
-  assert.ok(typeof tarball === 'object' && tarball !== null, 'npm pack must return package metadata.');
-  assert.ok('filename' in tarball && typeof tarball.filename === 'string', 'npm pack must return a filename.');
-
-  const archive = join(scratch, tarball.filename);
-
-  run('npm', ['exec', '--no', '--', 'publint', archive, '--strict']);
+  const { path: archive } = await packPackage({ cwd: root, destination: scratch, runner });
+  await lintPackage(archive);
   write('package.json', JSON.stringify({ name: 'packed-stylelint-consumer', private: true, type: 'module' }));
-  run('npm', ['install', '--install-strategy=nested', '--ignore-scripts', '--no-audit', '--no-fund', archive, `stylelint@${version('stylelint')}`], consumer);
-  run('npm', ['ls', '--all'], consumer);
+  runner.npm(['install', '--install-strategy=nested', '--ignore-scripts', '--no-audit', '--no-fund', archive, `stylelint@${version('stylelint')}`], { cwd: consumer });
+  runner.npm(['ls', '--all'], { cwd: consumer });
   const installed = realpathSync(join(consumer, 'node_modules/@protoapps/stylelint-config'));
 
   assert.ok(installed.startsWith(realpathSync(consumer)), 'must import a real tarball installation');
@@ -84,7 +58,7 @@ try {
   assert.deepEqual(manifest.peerDependenciesMeta ?? {}, {});
   const lock = JSON.parse(readFileSync(join(consumer, 'package-lock.json'), 'utf8')) as PackageLock;
 
-  for (const name of ['@protoapps/eslint-config', 'eslint', '@vitest/eslint-plugin', 'vitest', 'jiti', 'typescript']) {
+  for (const name of ['@protoapps/package-verifier', '@protoapps/eslint-config', 'eslint', '@vitest/eslint-plugin', 'vitest', 'jiti', 'typescript']) {
     assert.ok(!Object.keys(lock.packages).some((path) => path.endsWith(`node_modules/${name}`)),
       `Unexpected runtime dependency: ${name}`);
   }
@@ -115,10 +89,10 @@ assert.deepEqual(result.results.filter(item => !item.ignored).map(item => relati
 console.log('Consumer-relative ignoreFiles and CSS/Vue smoke: passed.');
 `);
 
-  run(process.execPath, [join(consumer, 'check-ignores.mjs'), 'stylelint.config.mjs'], scratch);
-  run(process.execPath, ['node_modules/stylelint/bin/stylelint.mjs', '**/*.{css,vue}'], consumer);
+  runner.node([join(consumer, 'check-ignores.mjs'), 'stylelint.config.mjs'], { cwd: scratch });
+  runner.node(['node_modules/stylelint/bin/stylelint.mjs', '**/*.{css,vue}'], { cwd: consumer });
 
-  run('npm', ['install', '--install-strategy=nested', '--ignore-scripts', '--no-audit', '--no-fund', `typescript@${version('typescript')}`, `@types/node@${version('@types/node')}`], consumer);
+  runner.npm(['install', '--install-strategy=nested', '--ignore-scripts', '--no-audit', '--no-fund', `typescript@${version('typescript')}`, `@types/node@${version('@types/node')}`], { cwd: consumer });
   renameSync(join(consumer, 'stylelint.config.mjs'), join(consumer, 'stylelint.config.ts'));
 
   write('types.ts', `import { createProtoConfig } from '@protoapps/stylelint-config';
@@ -133,10 +107,7 @@ export const config: Config = createProtoConfig(options);
 `);
 
   write('tsconfig.json', JSON.stringify({ compilerOptions: { target: 'ES2023', module: 'NodeNext', strict: true, noEmit: true }, include: ['stylelint.config.ts', 'types.ts'] }));
-  run(process.execPath, ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'], consumer);
-  run(process.execPath, ['node_modules/stylelint/bin/stylelint.mjs', '**/*.{css,vue}'], consumer);
+  runner.node(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'], { cwd: consumer });
+  runner.node(['node_modules/stylelint/bin/stylelint.mjs', '**/*.{css,vue}'], { cwd: consumer });
   process.stdout.write('Tarball import, declarations, TS config loader, nested dependencies and CSS/Vue CLI: passed.\n');
-} finally {
-  assert.ok(scratch.startsWith(join(tmpdir(), 'protoapps-stylelint-')));
-  rmSync(scratch, { recursive: true, force: true });
-}
+}, { prefix: 'protoapps-stylelint-' });
